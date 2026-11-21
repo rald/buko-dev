@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Buko Lisp — Web REPL & Interpreter</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --ok: #4ade80;
+      --err: #f87171;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.05rem;
+      color: var(--accent);
+    }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    button, select, input {
+      font-family: inherit;
+      font-size: 0.875rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #0f172a;
+      color: var(--text);
+      padding: 6px 10px;
+    }
+    button {
+      background: var(--accent);
+      color: #082f49;
+      font-weight: 600;
+      border-color: var(--accent);
+      cursor: pointer;
+    }
+    button.secondary {
+      background: transparent;
+      color: var(--text);
+      border-color: var(--border);
+    }
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      padding: 16px 20px;
+    }
+    @media (max-width: 840px) {
+      main { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 360px;
+    }
+    .card-title {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    textarea#editor {
+      flex: 1;
+      width: 100%;
+      resize: vertical;
+      min-height: 240px;
+      background: #0b1120;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      line-height: 1.5;
+      font-size: 0.9rem;
+    }
+    .output {
+      flex: 1;
+      background: #0b1120;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.5;
+      font-size: 0.88rem;
+    }
+    .line-in { color: var(--accent); }
+    .line-out { color: var(--ok); }
+    .line-err { color: var(--err); }
+    .line-log { color: var(--text); }
+    .repl-bar {
+      display: flex;
+      gap: 8px;
+    }
+    .repl-bar input {
+      flex: 1;
+      background: #0b1120;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Buko Lisp — Web Interpreter &amp; REPL</h1>
+    <div class="toolbar">
+      <label>
+        Args:
+        <input id="args-input" type="text" value="alpha beta 2026" placeholder="space-separated args" />
+      </label>
+      <label>
+        Format:
+        <select id="format-select">
+          <option value="buko" selected>buko</option>
+          <option value="json">json</option>
+        </select>
+      </label>
+      <button id="run-script-btn" type="button">Run Script</button>
+      <button id="clear-btn" class="secondary" type="button">Clear</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <div class="card-title">
+        <span>Script Editor (binds *args* &amp; argv)</span>
+        <select id="preset-select">
+          <option value="hello">Hello &amp; Args</option>
+          <option value="closure">Closures &amp; Let</option>
+          <option value="recursion">Recursion &amp; Lists</option>
+        </select>
+      </div>
+      <textarea id="editor" spellcheck="false">; Welcome to Buko Lisp in the browser!
+(print "Script args:" *args*)
+(= greet (fn (name) (str "Mabuhay, " name "!")))
+(if (car *args*)
+  (greet (car *args*))
+  (greet "Web"))</textarea>
+    </section>
+
+    <section class="card">
+      <div class="card-title">
+        <span>Console Output &amp; REPL</span>
+      </div>
+      <div id="output" class="output" aria-live="polite"></div>
+      <form id="repl-form" class="repl-bar">
+        <input id="repl-input" type="text" placeholder="Type an expression e.g. (+ 10 20) and press Enter" autocomplete="off" />
+        <button type="submit">Eval</button>
+      </form>
+    </section>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

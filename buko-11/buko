@@ -1,11 +1,28 @@
 #!/usr/bin/env node
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import readline from 'node:readline/promises';
-import { pathToFileURL } from 'node:url';
-import { stdin as defaultInput, stdout as defaultOutput } from 'node:process';
 
-// --- ES2026 Compatibility Helpers ---
+const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
+
+async function loadNodeModules() {
+  if (isBrowser) return null;
+  const [fsMod, pathMod, rlMod, urlMod, procMod] = await Promise.all([
+    import('node:fs/promises'),
+    import('node:path'),
+    import('node:readline/promises'),
+    import('node:url'),
+    import('node:process'),
+  ]);
+  return {
+    fs: fsMod.default,
+    path: pathMod.default,
+    readline: rlMod.default,
+    pathToFileURL: urlMod.pathToFileURL,
+    stdin: procMod.stdin,
+    stdout: procMod.stdout,
+    stderr: procMod.stderr,
+    process: procMod.default,
+  };
+}
+
 export function getOrInsertPoly(map, key, defaultValue) {
   if (typeof map.getOrInsert === 'function') {
     return map.getOrInsert(key, defaultValue);
@@ -67,7 +84,6 @@ export function concatIteratorsPoly(...iterables) {
   })();
 }
 
-// --- Design Patterns ---
 export class EventBus {
   #listeners = new Map();
 
@@ -214,7 +230,6 @@ export class ValueFactory {
   }
 }
 
-// --- Models ---
 export class BukoEnvironment {
   #bindings = new Map();
   #parent = null;
@@ -431,7 +446,15 @@ export class BukoInterpreter {
   #outputSink;
   #evalCount = 0;
 
-  constructor({ outputSink = (msg) => process.stdout.write(String(msg) + '\n') } = {}) {
+  constructor({
+    outputSink = (msg) => {
+      if (typeof process !== 'undefined' && process.stdout?.write) {
+        process.stdout.write(String(msg) + '\n');
+      } else {
+        console.log(String(msg));
+      }
+    },
+  } = {}) {
     this.#outputSink = outputSink;
     this.#globalEnv = new BukoEnvironment(null);
     this.#installBuiltins();
@@ -786,17 +809,25 @@ export class BukoReplModel {
   }
 
   async loadFile(filePath) {
-    const resolved = path.resolve(process.cwd(), filePath);
-    const content = await fs.readFile(resolved, 'utf8');
+    const node = await loadNodeModules();
+    if (!node) {
+      throw new Error('File loading is not available directly in browser mode.');
+    }
+    const resolved = node.path.resolve(node.process.cwd(), filePath);
+    const content = await node.fs.readFile(resolved, 'utf8');
     const result = this.evaluateLine(content);
     this.#events.emit('file:loaded', { path: resolved, ok: result.ok });
     return result;
   }
 
   async saveHistory(filePath) {
-    const resolved = path.resolve(process.cwd(), filePath);
+    const node = await loadNodeModules();
+    if (!node) {
+      throw new Error('Saving to local filesystem is not available directly in browser mode.');
+    }
+    const resolved = node.path.resolve(node.process.cwd(), filePath);
     const lines = this.#history.getAll().join('\n') + '\n';
-    await fs.writeFile(resolved, lines, 'utf8');
+    await node.fs.writeFile(resolved, lines, 'utf8');
     this.#events.emit('history:saved', { path: resolved, count: this.#history.getAll().length });
     return resolved;
   }
@@ -811,12 +842,14 @@ export class BukoReplModel {
   }
 }
 
-// --- View ---
 export class BukoConsoleView {
   #out;
   #err;
 
-  constructor({ out = process.stdout, err = process.stderr } = {}) {
+  constructor({
+    out = (typeof process !== 'undefined' && process.stdout) ? process.stdout : { write: (s) => console.log(s) },
+    err = (typeof process !== 'undefined' && process.stderr) ? process.stderr : { write: (s) => console.error(s) },
+  } = {}) {
     this.#out = out;
     this.#err = err;
   }
@@ -854,7 +887,6 @@ export class BukoConsoleView {
   }
 }
 
-// --- Controller ---
 export class BukoReplController {
   #model;
   #view;
@@ -866,8 +898,8 @@ export class BukoReplController {
   constructor({
     model = new BukoReplModel(),
     view = new BukoConsoleView(),
-    input = defaultInput,
-    output = defaultOutput,
+    input = (typeof process !== 'undefined' && process.stdin) ? process.stdin : null,
+    output = (typeof process !== 'undefined' && process.stdout) ? process.stdout : null,
   } = {}) {
     this.#model = model;
     this.#view = view;
@@ -1002,9 +1034,12 @@ export class BukoReplController {
     this.#running = true;
     this.#view.showBanner();
 
-    const rl = readline.createInterface({
-      input: this.#input,
-      output: this.#output,
+    const node = await loadNodeModules();
+    if (!node) return;
+
+    const rl = node.readline.createInterface({
+      input: this.#input ?? node.stdin,
+      output: this.#output ?? node.stdout,
       prompt: 'buko> ',
     });
 
@@ -1023,7 +1058,6 @@ export class BukoReplController {
   }
 }
 
-// --- CLI Entrypoint ---
 function printUsage(view) {
   view.showInfo([
     'Usage:',
@@ -1035,11 +1069,15 @@ function printUsage(view) {
   ].join('\n'));
 }
 
-export async function runCli(argv = process.argv.slice(2)) {
-  const view = new BukoConsoleView();
+export async function runCli(argv = []) {
+  const node = await loadNodeModules();
+  if (!node) {
+    throw new Error('CLI mode requires a Node.js runtime.');
+  }
+  const view = new BukoConsoleView({ out: node.stdout, err: node.stderr });
 
   if (!Array.isArray(argv) || argv.length === 0) {
-    const controller = new BukoReplController({ view });
+    const controller = new BukoReplController({ view, input: node.stdin, output: node.stdout });
     await controller.run();
     return;
   }
@@ -1053,7 +1091,7 @@ export async function runCli(argv = process.argv.slice(2)) {
 
   if (first === '-v' || first === '--version') {
     const pkgUrl = new URL('./package.json', import.meta.url);
-    const pkgRaw = await fs.readFile(pkgUrl, 'utf8');
+    const pkgRaw = await node.fs.readFile(pkgUrl, 'utf8');
     const pkg = JSON.parse(pkgRaw);
     view.showInfo(pkg.version);
     return;
@@ -1063,7 +1101,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     const expr = argv[1];
     if (expr === undefined) {
       view.showError('Error: -e / --eval requires an expression argument');
-      process.exitCode = 1;
+      node.process.exitCode = 1;
       return;
     }
     const model = new BukoReplModel();
@@ -1072,7 +1110,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     const res = model.evaluateLine(expr);
     if (!res.ok) {
       view.showError(res.message);
-      process.exitCode = 1;
+      node.process.exitCode = 1;
       return;
     }
     if (!res.skipped && res.formatted !== '') {
@@ -1084,33 +1122,36 @@ export async function runCli(argv = process.argv.slice(2)) {
   if (first.startsWith('-')) {
     view.showError(`Unknown option: ${first}`);
     printUsage(view);
-    process.exitCode = 1;
+    node.process.exitCode = 1;
     return;
   }
 
-  const scriptPath = path.resolve(process.cwd(), first);
+  const scriptPath = node.path.resolve(node.process.cwd(), first);
   const scriptArgs = argv.slice(1);
   const model = new BukoReplModel();
   model.interpreter.globalEnv.define('argv', scriptArgs);
   model.interpreter.globalEnv.define('*args*', scriptArgs);
 
   try {
-    const content = await fs.readFile(scriptPath, 'utf8');
+    const content = await node.fs.readFile(scriptPath, 'utf8');
     const res = model.evaluateLine(content);
     if (!res.ok) {
       view.showError(res.message);
-      process.exitCode = 1;
+      node.process.exitCode = 1;
     }
   } catch (err) {
     view.showError(`Failed to run script '${first}': ${err.message}`);
-    process.exitCode = 1;
+    node.process.exitCode = 1;
   }
 }
 
-const isDirectExecution =
-  typeof process.argv[1] === 'string' &&
-  pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
+if (!isBrowser) {
+  const node = await loadNodeModules();
+  const isDirectExecution =
+    typeof node.process.argv[1] === 'string' &&
+    node.pathToFileURL(node.path.resolve(node.process.argv[1])).href === import.meta.url;
 
-if (isDirectExecution) {
-  await runCli(process.argv.slice(2));
+  if (isDirectExecution) {
+    await runCli(node.process.argv.slice(2));
+  }
 }
