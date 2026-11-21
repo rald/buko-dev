@@ -1,0 +1,2 @@
+#!/usr/bin/env buko
+(print "Hello from script, args:" *args*)

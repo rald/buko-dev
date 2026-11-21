@@ -1,0 +1,31 @@
+{
+  "name": "buko-lisp-repl-es2026",
+  "version": "1.5.0",
+  "type": "module",
+  "description": "Buko Lisp Node.js REPL (rxi/fe lineage) using ES2026, OOP, MVC, TDD, and Design Patterns",
+  "main": "src/index.js",
+  "bin": {
+    "buko": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "keywords": [
+    "buko-lisp",
+    "buko",
+    "fe",
+    "rxi",
+    "lisp",
+    "repl",
+    "es2026",
+    "mvc",
+    "oop",
+    "tdd",
+    "design-patterns"
+  ],
+  "license": "MIT"
+}

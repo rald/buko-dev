@@ -1,0 +1,2 @@
+(= greet (fn (name) (print "Hello " name "!")))
+(greet "fria")
